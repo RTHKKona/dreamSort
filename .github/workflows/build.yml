@@ -1,0 +1,105 @@
+# This is a GitHub Actions workflow to build the application on multiple operating systems.
+# It uses a build matrix to run jobs for Linux, macOS, and Windows.
+# The workflow is triggered on every push and pull request to the main branch.
+
+name: Multi-OS Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    # A build matrix allows the job to run multiple times with different configurations.
+    strategy:
+      fail-fast: false # This is the default, but explicitly set for clarity.
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    # Specify the runner for each job in the matrix.
+    runs-on: ${{ matrix.os }}
+
+    # This ensures that a failure in this job does not stop the entire workflow.
+    continue-on-error: true
+
+    steps:
+    - name: Checkout repository
+      # This action checks out your repository under $GITHUB_WORKSPACE,
+      # so your workflow can access the code.
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      # This step sets up the Python environment on the runner.
+      # You can change the version as needed for your project.
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Tkinter on Linux
+      # This step installs the system-level dependency for tkinter on Linux runners.
+      # It now includes the core 'tcl' and 'tk' packages to prevent PyInstaller errors.
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk tk tcl
+
+    - name: Install Tkinter on macOS
+      # This step installs the system-level dependency for tkinter on macOS runners.
+      # The `python-tk` brew package should handle the core libraries correctly,
+      # but if you run into issues, you may need to install `tcl-tk` separately.
+      if: runner.os == 'macOS'
+      run: |
+        brew install python-tk
+
+    - name: Install Python Libraries
+      # This step installs the required Python packages using pip.
+      # In a CI/CD environment, a virtual environment is not necessary as each job runs in an isolated container.
+      run: |
+        pip install tkinterdnd2 customtkinter pyinstaller
+
+    - name: Add icon file for Windows build
+      # This step ensures the required icon file is available for the Windows PyInstaller command.
+      # The `yoohyeon.ico` is assumed to be in the repository.
+      if: runner.os == 'Windows'
+      run: |
+        if (Test-Path -Path "yoohyeon.ico") {
+            # This command copies the icon to the root of the workspace if it exists.
+            Copy-Item -Path "yoohyeon.ico" -Destination "."
+        }
+      shell: pwsh
+
+    - name: Build application (Linux/macOS)
+      # This step runs the pyinstaller command for non-Windows operating systems.
+      # The command uses the --name flag to append the OS name to the executable.
+      if: runner.os != 'Windows'
+      run: |
+        echo "Starting build on ${{ runner.os }}..."
+        pyinstaller --onefile --windowed --noconfirm --name HB_dreamSort-${{ runner.os }} HB_dreamSort.py
+        echo "Build complete."
+
+    - name: Build application (Windows)
+      # This step runs the specific pyinstaller command for Windows.
+      # We use PowerShell (`pwsh`) as the shell to correctly handle the command's syntax.
+      # The command also uses the --name flag to append the OS name.
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        echo "Starting build on ${{ runner.os }}..."
+        if (Test-Path -Path "yoohyeon.ico") {
+          pyinstaller --onefile --windowed --noconfirm --icon="yoohyeon.ico" --add-data="yoohyeon.ico;." --name HB_dreamSort-${{ runner.os }} HB_dreamSort.py
+        }
+        else {
+          pyinstaller --onefile --windowed --noconfirm --name HB_dreamSort-${{ runner.os }} HB_dreamSort.py
+        }
+        echo "Build complete."
+
+    - name: Archive artifacts
+      # This step can be used to save your built application binaries or other output.
+      # The output is located in the `dist/` directory after the build step.
+      uses: actions/upload-artifact@v4
+      with:
+        name: dreamSort-${{ matrix.os }}
+        path: dist/
+        retention-days: 7
