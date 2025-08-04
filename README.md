@@ -1,5 +1,7 @@
 # dreamSort Mod Manager
 
+![dreamSort Logo by qishiqi, MH4 Guildmarm in a pose inspired by Yoohyeon from Dreamcatcher](./image.png)
+
 ## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx
 
 >Developed by Handburger
@@ -7,6 +9,8 @@
 >Contributors:
 >
 >jSQrD (jSQrD-dev): Linux Instructions and Support
+>
+>qishiqi: Application Logo
 
 Supports Windows x64, Linux, Steam Deck
 
@@ -26,13 +30,13 @@ Key Features:
 * Right-click to delete any mod or cheat you don't want.
 * App warnings if Ryujinx is running before you press apply - avoiding errors.
 * Permanent Dark Mode (Hurray!)
-* Yoohyeon from Dreamcatcher as the icon. (Windows Only)
+* Icon inspired by Yoohyeon from Dreamcatcher.
 
 ### Downloads
 
 [Download from Gamebanana](https://gamebanana.com/tools/20124)
 
-### For Compiling for Linux Binaries
+### For Compiling
 
 #### Step 1: Install System Packages
 
@@ -74,13 +78,13 @@ With the virtual environment active, install the required Python packages using 
 ##### Using pip
 
 ```Bash
-pip install tkinterdnd2 customtkinter pyinstaller
+pip install tkinterdnd2 customtkinter pyinstaller pillow
 ```
 
 ##### Using uv
 
 ```Bash
-uv pip install tkinterdnd2 customtkinter pyinstaller
+uv pip install tkinterdnd2 customtkinter pyinstaller pillow
 ```
 
 #### Step 4: Compile the Binary
@@ -88,7 +92,7 @@ uv pip install tkinterdnd2 customtkinter pyinstaller
 Finally, run the pyinstaller command. Since your venv is active, pyinstaller will use the libraries you just installed.
 
 ```Bash
-pyinstaller --onefile --windowed --noconfirm HB_dreamSort.py
+pyinstaller --onefile --windowed --noconfirm --icon="icon.png" --add-data="icon.png:." HB_dreamSort.py
 ```
 
 This will create a standalone executable in the dist folder of your project directory.
@@ -96,5 +100,5 @@ This will create a standalone executable in the dist folder of your project dire
 For Windows Python Pyinstaller compilation
 
 ```powershell
-pyinstaller --onefile --windowed --noconfirm --icon="yoohyeon.ico" --add-data="yoohyeon.ico;." --add-data="C:\Users\[redacted]\AppData\Local\Programs\Python\Python313\Lib\site-packages\tkinterdnd2;tkinterdnd2" HB_dreamSort.py
+pyinstaller --onefile --windowed --noconfirm --icon="icon.png" --add-data="icon.png:." HB_dreamSort.py
 ```

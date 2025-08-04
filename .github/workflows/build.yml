@@ -1,0 +1,92 @@
+# This is a GitHub Actions workflow to build the application on multiple operating systems.
+# It uses a build matrix to run jobs for Linux, macOS, and Windows.
+# The workflow is triggered on every push and pull request to the main branch.
+
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false  # Ensures all OS builds run even if one fails
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true  # Allow individual OS builds to fail without failing the whole workflow
+
+    steps:
+    - name: Checkout repository
+      # This action checks out your repository under $GITHUB_WORKSPACE,
+      # so your workflow can access the code.
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      # This step sets up the Python environment on the runner.
+      # You can change the version as needed for your project.
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install Tkinter on Linux
+      # This step installs the system-level dependency for tkinter on Linux runners.
+      # It now includes the core 'tcl' and 'tk' packages to prevent PyInstaller errors.
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk tk tcl
+
+    - name: Install Tkinter on macOS
+      # This step installs the system-level dependency for tkinter on macOS runners.
+      # The `python-tk` brew package should handle the core libraries correctly,
+      # but if you run into issues, you may need to install `tcl-tk` separately.
+      if: runner.os == 'macOS'
+      run: |
+        brew install python-tk
+
+    - name: Install Python Libraries
+      # This step installs the required Python packages using pip.
+      # In a CI/CD environment, a virtual environment is not necessary as each job runs in an isolated container.
+      run: |
+        pip install tkinterdnd2 customtkinter pyinstaller pillow
+    - name: Build application
+      run: |
+        echo "Starting build on ${{ runner.os }}..."
+        if [[ "${{ runner.os }}" == "macOS" ]]; then
+          # Use --onedir for macOS
+          if [ -f "icon.png" ]; then
+            pyinstaller --onedir --windowed --noconfirm --icon="icon.png" --add-data="icon.png:." --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
+          else
+            pyinstaller --onedir --windowed --noconfirm --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
+          fi
+        else
+          # Use --onefile for Windows and Linux
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            SEPARATOR=";"
+          else
+            SEPARATOR=":"
+          fi
+          if [ -f "icon.png" ]; then
+            pyinstaller --onefile --windowed --noconfirm --icon="icon.png" --add-data="icon.png${SEPARATOR}." --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
+          else
+            pyinstaller --onefile --windowed --noconfirm --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
+          fi
+        fi
+        echo "Build complete."
+      shell: bash
+
+    - name: Archive artifacts
+      # This step can be used to save your built application binaries or other output.
+      # The output is located in the `dist/` directory after the build step.
+      uses: actions/upload-artifact@v4
+      with:
+        name: dreamSort-${{ matrix.os }}
+        path: |
+          dist/**/*
+          !dist/**/*.o
+          !dist/**/*.pyc
+        retention-days: 7
