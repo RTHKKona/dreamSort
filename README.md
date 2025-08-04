@@ -1,6 +1,6 @@
 # dreamSort Mod Manager
 
-![dreamSort Logo by qishiqi, MH4 Guildmarm in a pose inspired by Yoohyeon from Dreamcatcher](./image.png)
+![dreamSort Logo by qishiqi, MH4 Guildmarm in a pose inspired by Yoohyeon from Dreamcatcher](./icon.png)
 
 ## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx
 
@@ -35,6 +35,8 @@ Key Features:
 ### Downloads
 
 [Download from Gamebanana](https://gamebanana.com/tools/20124)
+[Download from GitHub Releases](https://github.com/RTHKKona/dreamSort/releases)
+[Download from GitHub Actions](https://github.com/RTHKKona/dreamSort/actions/workflows/build.yml)
 
 ### For Compiling
 
@@ -92,7 +94,7 @@ uv pip install tkinterdnd2 customtkinter pyinstaller pillow
 Finally, run the pyinstaller command. Since your venv is active, pyinstaller will use the libraries you just installed.
 
 ```Bash
-pyinstaller --onefile --windowed --noconfirm --icon="icon.png" --add-data="icon.png:." HB_dreamSort.py
+pyinstaller --onefile --windowed --noconfirm --icon="icon.ico" --add-data="icon.ico:." HB_dreamSort.py
 ```
 
 This will create a standalone executable in the dist folder of your project directory.
@@ -100,5 +102,5 @@ This will create a standalone executable in the dist folder of your project dire
 For Windows Python Pyinstaller compilation
 
 ```powershell
-pyinstaller --onefile --windowed --noconfirm --icon="icon.png" --add-data="icon.png:." HB_dreamSort.py
+pyinstaller --onefile --windowed --noconfirm --icon="icon.ico" --add-data="icon.ico;." HB_dreamSort.py
 ```
