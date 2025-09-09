@@ -1,42 +1,45 @@
 # dreamSort Mod Manager
 
-![dreamSort Logo by qishiqi, MH4 Guildmarm in a pose inspired by Yoohyeon from Dreamcatcher](./icon.png)
+<img src="./icon.png" alt="dreamSort Logo by qishiqi, MH4 Guildmarm in a pose inspired by Yoohyeon from Dreamcatcher" width="30%"/>
 
 ## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx
 
->Developed by Handburger
+>Developed by [Handburger](https://github.com/RTHKKona)
 >
 >Contributors:
->
->jSQrD (jSQrD-dev): Linux Instructions and Support
->
->qishiqi: Application Logo
+> - jSQrD (jSQrD-dev): Linux Instructions and Support
+> - qishiqi: Application Logo
 
 Supports Windows x64, Linux, Steam Deck
 
 Key Features:
 
+* Permanent Dark Mode UI
 * Install mods easily with drag-drop folders, 7z or zip files (6.2.4 feature).
 * Install cheats easily via checkbox and have it be applied to Ryujinx. (bugfixed)
-* Clear all loaded mods & cheats via UI buttons.
-* Direct Ryujinx integration (you don't have to use the various menus in Ryujinx anymore!)
-* Launch GU from dreamSort directly
-* Sort mods based on importance or conflicts.
-* Renames Mods to align with user-defined sorting.
-* Pre-set to Ryujinx MHGU mod folder automatically.
-* Colour coded outline based on mod installation compatibility (Green is overrides, Red means conflicts, blue for no conflicts).
-* List View and Tree View, with list is where you enable or disable desired mods, and tree view being which files specifically are overriding or conflicting.
-* Edit cheats in-app with the editor.
-* Right-click to delete any mod or cheat you don't want.
 * App warnings if Ryujinx is running before you press apply - avoiding errors.
-* Permanent Dark Mode (Hurray!)
+* Launch GU from dreamSort directly via Ryujinx CLI.
+* Renames mods to align with user-defined sorting.
+* Clear all loaded mods & cheats via UI buttons.
+* Sort mods based on importance and conflicts.
+* Colour coded outline based on mod installation compatibility
+  > Green = no overrides,
+  > Red = has conflicts,
+  > Blue = loaded.
+* Right-click to delete any mod or cheat you don't want.
+* Dual List modes - List View and Tree View.
+* Edit cheats in-app with the editor.
 * Icon inspired by Yoohyeon from Dreamcatcher.
 
 ### Downloads
 
-[Download from Gamebanana](https://gamebanana.com/tools/20124)
-[Download from GitHub Releases](https://github.com/RTHKKona/dreamSort/releases)
-[Download from GitHub Actions](https://github.com/RTHKKona/dreamSort/actions/workflows/build.yml)
+[from GitHub Releases (Windows, MacOS, Linux)](https://github.com/RTHKKona/dreamSort/releases)
+
+[from GitHub Actions (Windows, MacOS, Linux)](https://github.com/RTHKKona/dreamSort/actions/workflows/build.yml)
+
+[from Gamebanana (Windows Only)](https://gamebanana.com/tools/20124)
+
+---
 
 ### For Compiling
 
@@ -104,3 +107,14 @@ For Windows Python Pyinstaller compilation
 ```powershell
 pyinstaller --onefile --windowed --noconfirm --icon="icon.ico" --add-data="icon.ico;." HB_dreamSort.py
 ```
+---
+
+### More Info
+#### Tech Stack
+* Coding Language - Python
+* Front-end UI - CustomTkinter and tkinterdnd2
+* Windows Executable Packaging - PyInstaller
+* CI/CD - GitHub Actions
+
+### Contribution
+Feel free to fork the repo and open a pull request with a clear description of the improvements.
