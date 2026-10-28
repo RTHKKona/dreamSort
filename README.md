@@ -4,13 +4,15 @@
 
 ## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx and morerokk's MHGU Recompilation.
 
->Developed by [Handburger](https://github.com/RTHKKona)
->Current Version: v7.0.1
->Contributors:
+> Developed by [Handburger](https://github.com/RTHKKona)
+
+> Current Version: v7.0.1
+
+> Contributors:
 > - jSQrD (jSQrD-dev): Linux Instructions and Support
 > - qishiqi: Application Logo
 
-Supports Windows x64, Linux, Steam Deck, partial Mac OS
+Supports Windows x64, Linux, Steam Deck, partially Mac OS
 
 Key Features:
 
