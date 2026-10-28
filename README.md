@@ -5,7 +5,7 @@
 ## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx and morerokk's MHGU Recompilation.
 
 >Developed by [Handburger](https://github.com/RTHKKona)
->Current Version: v7
+>Current Version: v7.0.1
 >Contributors:
 > - jSQrD (jSQrD-dev): Linux Instructions and Support
 > - qishiqi: Application Logo
@@ -24,9 +24,10 @@ Key Features:
 * Sort mods based on importance and conflicts.
 * Hold `Ctrl` and left-click rows to select multiple mods, then right-click for bulk Enable / Disable / Delete.
 * Colour coded outline based on mod installation compatibility
-  > Green = no overrides,
-  > Red = has conflicts,
-  > Lavendar = loaded.
+  > Green = No Overrides,
+  > Red = Has Conflicts
+  > Lavendar = Loaded
+  > Yellow = Currently Selected
 * Right-click to delete any mod or cheat you don't want.
 * Dual List modes - List View and Tree View.
 * Edit cheats in-app with the editor.

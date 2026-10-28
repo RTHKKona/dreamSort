@@ -1,6 +1,6 @@
 ## DREAMSORT MOD MANAGER
 # 2026/10/28
-VERSION = "v7.0.0"
+VERSION = "v7.0.1"
 
 import os
 import re
@@ -134,6 +134,11 @@ class Colors:
     CHEAT_MOD = "#FFA500"
     DISABLED = "#808080"
     DRAG_HIGHLIGHT = "#FFD700"
+    # Dark-gold blend of WIDGET_BG and DRAG_HIGHLIGHT: the face color of a
+    # selected row, so ctrl-click selection changes the whole row, not just
+    # its edge.
+    SELECTED_FACE = "#5a5233"
+    SELECTED_BAR_TEXT = "#1a1a1a"
     PROGRESS_OVERLAY = ("#000000", "#000000")
     SECTION_HEADER = "#505050"
     RECOMP_ACCENT = "#4fc3f7"
@@ -1086,7 +1091,7 @@ class DreamSortApp(ctk.CTkFrame):
 
         self.legend_frame = ctk.CTkFrame(self.list_panel, fg_color="transparent")
         self.legend_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=(0, 5))
-        self.legend_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        self.legend_frame.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
 
         def legend_item(color, text):
             f = ctk.CTkFrame(self.legend_frame, fg_color="transparent")
@@ -1102,6 +1107,7 @@ class DreamSortApp(ctk.CTkFrame):
             (Colors.CONFLICT, "Is overridden by others"),
             (Colors.NO_CONFLICT, "No conflicts"),
             (Colors.DISABLED, "Disabled"),
+            (Colors.DRAG_HIGHLIGHT, "Selected (Ctrl+Click)"),
         ]):
             legend_item(color, text).grid(row=0, column=i, sticky="w", padx=5)
 
@@ -1115,6 +1121,20 @@ class DreamSortApp(ctk.CTkFrame):
         self.tree_frame = ctk.CTkFrame(self.view_container, fg_color="transparent")
         self.setup_treeview(style)
         self.mod_list_frame.grid(row=0, column=0, sticky="nsew")
+
+        # ----- Selection bar (row 4): visible whenever mods are selected.
+        # Makes ctrl-click selection unmistakable: it announces how many rows
+        # are selected and what the selection is for.
+        self.selection_bar = ctk.CTkFrame(
+            self.list_panel, fg_color=Colors.DRAG_HIGHLIGHT, corner_radius=6)
+        self.selection_bar.grid(row=4, column=0, sticky="ew", padx=5,
+                                pady=(0, 5))
+        self.selection_bar.grid_remove()  # hidden until something is selected
+        self.selection_label = ctk.CTkLabel(
+            self.selection_bar, text="", anchor="w", justify="left",
+            text_color=Colors.SELECTED_BAR_TEXT,
+            font=ctk.CTkFont(size=12, weight="bold"))
+        self.selection_label.pack(fill="x", padx=10, pady=3)
 
         # ----- Right panel -----
         self.details_frame = ctk.CTkFrame(self.paned_window, fg_color=Colors.FRAME_BG)
@@ -1640,6 +1660,7 @@ class DreamSortApp(ctk.CTkFrame):
             w.destroy()
         self.mod_item_widgets.clear()
         self.selected_mods.clear()
+        self._update_selection_bar()
         self.recomp_mods_section = None
         special = self.ryujinx.special_cheats_folder_name
         romfs_mods = [m for m in self.ryujinx.load_order
@@ -1712,10 +1733,12 @@ class DreamSortApp(ctk.CTkFrame):
         # Plain left-click: focus a single row (ring it) and show its details.
         # Ctrl+left-click is handled separately as a multi-select toggle.
         widget = self.mod_item_widgets.get(mod_name)
-        if widget is not None and getattr(widget, "_select_ring", None) is not None:
-            self._clear_selection()
-            self.selected_mods.add(mod_name)
-            self._set_row_ring(widget, True)
+        if widget is not None and hasattr(widget, "_ring_face"):
+            if mod_name not in self.selected_mods or len(self.selected_mods) > 1:
+                self._clear_selection()
+                self.selected_mods.add(mod_name)
+                self._set_row_ring(widget, True)
+                self._update_selection_bar()
         self.show_details(mod_name)
 
     def on_checkbox_toggle(self):
@@ -1743,6 +1766,9 @@ class DreamSortApp(ctk.CTkFrame):
             if not hasattr(widget, "original_name"):
                 continue
             mod_name = widget.original_name
+            if (mod_name in self.selected_mods
+                    or widget is self.drag_data.get("item")):
+                continue  # keep the selection / drag ring intact
             if not hasattr(widget, "checkbox"):
                 if mod_name == self.ryujinx.special_cheats_folder_name:
                     widget.configure(fg_color=Colors.BG)
@@ -1909,6 +1935,7 @@ class DreamSortApp(ctk.CTkFrame):
         self.patch_widgets.clear()
         self.plugin_widgets.clear()
         self.selected_mods.clear()
+        self._update_selection_bar()
 
         # --- Mods section: ONLY romFS mods. A package that ships an .nro is
         # a plugin, not a mod (foundational libraries are excepted). Pure
@@ -2089,6 +2116,9 @@ class DreamSortApp(ctk.CTkFrame):
     def _recomp_recolor_all(self):
         for clean_name, widget in self.mod_item_widgets.items():
             if hasattr(widget, "checkbox"):
+                if (clean_name in self.selected_mods
+                        or widget is self.drag_data.get("item")):
+                    continue  # keep the selection / drag ring intact
                 widget.configure(border_color=self._recomp_row_color(clean_name))
 
     def _on_recomp_mod_toggle(self):
@@ -2762,47 +2792,87 @@ class DreamSortApp(ctk.CTkFrame):
 
     # --------------------------------------------- selection + inner ring
 
-    RING_INSET = 3
-    RING_WIDTH = 2
+    # Ring thickness in px. Thinner than every child widget's inset, so no
+    # child canvas can ever reach over it and punch rectangular bites out of
+    # it (the cause of the old "broken ring" artifact at high DPI).
+    RING_WIDTH = 1
 
     def _attach_select_ring(self, face, row, corner_radius):
-        # Inner rounded outline inset RING_INSET px inside the row's border.
-        # Solid fill matching the row's content bg (not "transparent", which
-        # on Windows gets an opaque canvas bg that paints over the border),
-        # and stacked ABOVE the row's internal bg canvas but BELOW the row's
-        # text/checkbox children so clicks and labels stay on top.
-        ring = ctk.CTkFrame(
-            face,
-            corner_radius=max(4, corner_radius - self.RING_INSET),
-            fg_color=Colors.WIDGET_BG,
-            border_color=Colors.DRAG_HIGHLIGHT,
-            border_width=0,
-        )
-        # CTk's own place() rejects width/height offsets, so go through Tcl.
-        ring.tk.call(
-            "place", ring._w,
-            "-x", self.RING_INSET, "-y", self.RING_INSET,
-            "-relwidth", 1.0, "-width", -2 * self.RING_INSET,
-            "-relheight", 1.0, "-height", -2 * self.RING_INSET,
-        )
-        # Stack the ring above the face's internal bg canvas but below the
-        # real children. The face's first child is always its CTk canvas.
-        kids = face.winfo_children()
-        if len(kids) > 1:
-            ring.lower(kids[1])
-        else:
-            ring.lift()
-        row._select_ring = ring
+        # Selection indicator: swap the row's own border to a thin gold ring
+        # and tint the row face. An overlay frame can't work on Windows —
+        # raised above children it paints over the checkbox/text; below
+        # children the label clips the top/bottom edges. The row's own border
+        # is drawn beneath every child and, at RING_WIDTH, stays out of every
+        # child's reach — a complete, reliable, uninterrupted indicator.
+        row._ring_face = face   # frame whose face gets tinted (row itself for recomp)
+        row._ring_on = False
+
+    @staticmethod
+    def _safe_child_bg(child, color):
+        # Re-paint the canvas backdrop of fake-transparent children (labels,
+        # checkbox) so they blend into the tinted face instead of showing
+        # stale rectangles over it.
+        try:
+            child.configure(bg_color=color)
+        except (ValueError, tk.TclError):
+            pass
 
     def _set_row_ring(self, row, on):
-        ring = getattr(row, "_select_ring", None)
-        if ring is not None:
-            ring.configure(border_width=self.RING_WIDTH if on else 0)
+        if row is None:
+            return
+        face = getattr(row, "_ring_face", row)
+        frames = [row] if face is row else [row, face]
+        if on:
+            if getattr(row, "_ring_on", False):
+                return  # already ringed (e.g. a selected row grabbed for drag)
+            # Capture the exact pre-selection look so deselect can restore it
+            # even if conflict recoloring ran in between.
+            row._pre_ring = [(f.cget("border_color"), f.cget("border_width"),
+                              f.cget("fg_color")) for f in frames]
+            for f in frames:
+                f.configure(fg_color=Colors.SELECTED_FACE)
+            row.configure(border_color=Colors.DRAG_HIGHLIGHT,
+                          border_width=self.RING_WIDTH)
+            for child in face.winfo_children():
+                self._safe_child_bg(child, Colors.SELECTED_FACE)
+            row._ring_on = True
+        else:
+            if not getattr(row, "_ring_on", False):
+                return
+            pre = getattr(row, "_pre_ring", None)
+            if pre is None:
+                pre = [(row.cget("border_color"), row.cget("border_width"),
+                        Colors.WIDGET_BG)]
+            for f, (bc, bw, fg) in zip(frames, pre):
+                f.configure(fg_color=fg)
+                if f is row:
+                    f.configure(border_width=bw)
+                    if bc is not None:
+                        f.configure(border_color=bc)
+            # Restore children AFTER the face, so auto-detected backgrounds
+            # (bg_color was None) re-detect the restored face color.
+            face_color = face.cget("fg_color")
+            for child in face.winfo_children():
+                self._safe_child_bg(child, face_color)
+            row._ring_on = False
+
+    def _update_selection_bar(self):
+        n = len(self.selected_mods)
+        if n > 0:
+            noun = "mod" if n == 1 else "mods"
+            self.selection_label.configure(
+                text=(f"Selected: {n} {noun}   |   Ctrl+Click adds/removes"
+                      f"   |   Right-click a selected row to enable, disable"
+                      f" or delete all {n}"))
+            self.selection_bar.grid()
+        else:
+            self.selection_bar.grid_remove()
 
     def _clear_selection(self):
         for name in list(self.selected_mods):
             self._set_row_ring(self.mod_item_widgets.get(name), False)
         self.selected_mods.clear()
+        self._update_selection_bar()
 
     def _toggle_mod_selection(self, mod_name):
         widget = self.mod_item_widgets.get(mod_name)
@@ -2814,6 +2884,7 @@ class DreamSortApp(ctk.CTkFrame):
         else:
             self.selected_mods.add(mod_name)
             self._set_row_ring(widget, True)
+        self._update_selection_bar()
 
     def _bulk_enable(self, want):
         for name in list(self.selected_mods):
@@ -2841,6 +2912,7 @@ class DreamSortApp(ctk.CTkFrame):
             else:
                 self.delete_mod(name)
         self.selected_mods.clear()
+        self._update_selection_bar()
         self.run_scan()
 
     def setup_drag_drop(self, row, drag_handle):
