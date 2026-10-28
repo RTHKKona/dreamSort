@@ -2,34 +2,35 @@
 
 <img src="./icon.png" alt="dreamSort Logo by qishiqi, MH4 Guildmarm in a pose inspired by Yoohyeon from Dreamcatcher" width="30%"/>
 
-## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx
+## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx and morerokk's MHGU Recompilation.
 
 >Developed by [Handburger](https://github.com/RTHKKona)
->
+>Current Version: v7
 >Contributors:
 > - jSQrD (jSQrD-dev): Linux Instructions and Support
 > - qishiqi: Application Logo
 
-Supports Windows x64, Linux, Steam Deck
+Supports Windows x64, Linux, Steam Deck, partial Mac OS
 
 Key Features:
 
-* Permanent Dark Mode UI
+* Permanent Dark Mode UI.
 * Install mods easily with drag-drop folders, 7z or zip files (6.2.4 feature).
-* Install cheats easily via checkbox and have it be applied to Ryujinx. (bugfixed)
-* App warnings if Ryujinx is running before you press apply - avoiding errors.
-* Launch GU from dreamSort directly via Ryujinx CLI.
-* Renames mods to align with user-defined sorting.
+* Install cheats easily via checkbox and have it be applied to Ryujinx.
+* App warnings if Ryujinx is running before you press apply.
+* Launch GU from dreamSort directly.
+* Renames mods to align with user-defined sorting/priority.
 * Clear all loaded mods & cheats via UI buttons.
 * Sort mods based on importance and conflicts.
+* Hold `Ctrl` and left-click rows to select multiple mods, then right-click for bulk Enable / Disable / Delete.
 * Colour coded outline based on mod installation compatibility
   > Green = no overrides,
   > Red = has conflicts,
-  > Blue = loaded.
+  > Lavendar = loaded.
 * Right-click to delete any mod or cheat you don't want.
 * Dual List modes - List View and Tree View.
 * Edit cheats in-app with the editor.
-* Icon inspired by Yoohyeon from Dreamcatcher.
+* Icon inspired by Yoohyeon from Dreamcatcher. <3
 
 ### Downloads
 
@@ -110,6 +111,19 @@ pyinstaller --onefile --windowed --noconfirm --icon="icon.ico" --add-data="icon.
 ---
 
 ### More Info
+#### Adding Manifest Data
+To plugin/mod developers: dreamSort accepts a manifest text file located in the same directory depth as the romfs folder (i.e /modName/manifest.txt /modName/romfs/...etc). You can use manifest_template.txt as the example. Inside of this manifest you can write the following information:
+```
+mod_name= "My Mod"
+version= "v3.0"
+author(s)= "Handburger"
+```
+Acceptable formats and naming schemes:
+* manifest.txt, mod.txt, info.txt
+* mod.json, info.json, plugin.json
+
+You can use " or ' or none at all around your string, but it is good practice to have quotations around your strings :).
+
 #### Tech Stack
 * Coding Language - Python
 * Front-end UI - CustomTkinter and tkinterdnd2
