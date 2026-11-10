@@ -1,0 +1,6 @@
+# Runtime dependencies for the PySide6 build of dreamSort.
+PySide6>=6.5
+
+# Optional: enables installing .7z mod archives. Everything else works without
+# it, and the UI reports a clear message when a .7z is dropped and it is absent.
+py7zr>=0.20; python_version >= "3.9"
