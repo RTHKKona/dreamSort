@@ -1,92 +1,237 @@
-# This is a GitHub Actions workflow to build the application on multiple operating systems.
-# It uses a build matrix to run jobs for Linux, macOS, and Windows.
-# The workflow is triggered on every push and pull request to the main branch.
+# Builds the PySide6 release of dreamSort on Windows, Linux and macOS (arm64 + Intel).
+# Push / pull request: build, smoke-test and upload artifacts.
+# Tag v*: the same builds are attached to a GitHub Release.
 
 name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    tags: ["v*"]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
 
 jobs:
   build:
-    strategy:
-      fail-fast: false  # Ensures all OS builds run even if one fails
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: true  # Allow individual OS builds to fail without failing the whole workflow
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+          - name: linux-x64
+            os: ubuntu-latest
+          - name: macos-arm64
+            os: macos-15
+          - name: macos-x64
+            os: macos-15-intel
 
     steps:
-    - name: Checkout repository
-      # This action checks out your repository under $GITHUB_WORKSPACE,
-      # so your workflow can access the code.
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      # This step sets up the Python environment on the runner.
-      # You can change the version as needed for your project.
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
 
-    - name: Install Tkinter on Linux
-      # This step installs the system-level dependency for tkinter on Linux runners.
-      # It now includes the core 'tcl' and 'tk' packages to prevent PyInstaller errors.
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-tk tk tcl
+      - name: Install Qt libraries (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libglib2.0-0 \
+            libfontconfig1 libxcb-cursor0 xvfb
 
-    - name: Install Tkinter on macOS
-      # This step installs the system-level dependency for tkinter on macOS runners.
-      # The `python-tk` brew package should handle the core libraries correctly,
-      # but if you run into issues, you may need to install `tcl-tk` separately.
-      if: runner.os == 'macOS'
-      run: |
-        brew install python-tk
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install "pyinstaller>=6.10"
 
-    - name: Install Python Libraries
-      # This step installs the required Python packages using pip.
-      # In a CI/CD environment, a virtual environment is not necessary as each job runs in an isolated container.
-      run: |
-        pip install tkinterdnd2 customtkinter pyinstaller pillow
-    - name: Build application
-      run: |
-        echo "Starting build on ${{ runner.os }}..."
-        if [[ "${{ runner.os }}" == "macOS" ]]; then
-          # Use --onedir for macOS
-          if [ -f "icon.png" ]; then
-            pyinstaller --onedir --windowed --noconfirm --icon="icon.png" --add-data="icon.png:." --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
-          else
-            pyinstaller --onedir --windowed --noconfirm --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "value=$(python -c 'from dreamsort.constants import VERSION; print(VERSION)')" >> "$GITHUB_OUTPUT"
+
+      - name: Check version matches the tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+
+          from dreamsort.constants import VERSION
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag.lstrip("vV") != VERSION.lstrip("vV"):
+              sys.exit("tag %s does not match VERSION %s in dreamsort/constants.py"
+                       % (tag, VERSION))
+          PY
+
+      - name: Check the sources compile
+        run: python -m compileall -q dreamSort.py dreamsort
+
+      - name: Check the package imports
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "import dreamsort"
+          python -c "from dreamsort.ui.main_window import MainWindow"
+          python -c "import dreamsort.analyzers.recomp, dreamsort.analyzers.eden"
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: >
+          pyinstaller --onefile --windowed --noconfirm --clean
+          --name dreamSort --icon "icon.ico"
+          --add-data "icon.ico;." --add-data "icon.png;."
+          dreamSort.py
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: >
+          pyinstaller --onefile --windowed --noconfirm --clean
+          --name dreamSort
+          --add-data "icon.ico:." --add-data "icon.png:."
+          dreamSort.py
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          ICON=""
+          if [ -f icon.png ]; then
+            mkdir -p build/icon.iconset
+            sips -z 16 16     icon.png --out build/icon.iconset/icon_16x16.png      >/dev/null
+            sips -z 32 32     icon.png --out build/icon.iconset/icon_16x16@2x.png   >/dev/null
+            sips -z 32 32     icon.png --out build/icon.iconset/icon_32x32.png      >/dev/null
+            sips -z 64 64     icon.png --out build/icon.iconset/icon_32x32@2x.png   >/dev/null
+            sips -z 128 128   icon.png --out build/icon.iconset/icon_128x128.png    >/dev/null
+            sips -z 256 256   icon.png --out build/icon.iconset/icon_128x128@2x.png >/dev/null
+            sips -z 256 256   icon.png --out build/icon.iconset/icon_256x256.png    >/dev/null
+            sips -z 512 512   icon.png --out build/icon.iconset/icon_256x256@2x.png >/dev/null
+            sips -z 512 512   icon.png --out build/icon.iconset/icon_512x512.png    >/dev/null
+            sips -z 1024 1024 icon.png --out build/icon.iconset/icon_512x512@2x.png >/dev/null
+            iconutil -c icns build/icon.iconset -o build/icon.icns
+            ICON="--icon build/icon.icns"
           fi
-        else
-          # Use --onefile for Windows and Linux
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            SEPARATOR=";"
-          else
-            SEPARATOR=":"
-          fi
-          if [ -f "icon.png" ]; then
-            pyinstaller --onefile --windowed --noconfirm --icon="icon.png" --add-data="icon.png${SEPARATOR}." --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
-          else
-            pyinstaller --onefile --windowed --noconfirm --name "HB_dreamSort-${{ runner.os }}" HB_dreamSort.py
-          fi
-        fi
-        echo "Build complete."
-      shell: bash
+          pyinstaller --onedir --windowed --noconfirm --clean $ICON \
+            --name dreamSort \
+            --osx-bundle-identifier com.rthkkona.dreamsort \
+            --add-data "icon.ico:." --add-data "icon.png:." \
+            dreamSort.py
 
-    - name: Archive artifacts
-      # This step can be used to save your built application binaries or other output.
-      # The output is located in the `dist/` directory after the build step.
-      uses: actions/upload-artifact@v4
-      with:
-        name: dreamSort-${{ matrix.os }}
-        path: |
-          dist/**/*
-          !dist/**/*.o
-          !dist/**/*.pyc
-        retention-days: 7
+      - name: Sign (macOS, ad-hoc)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: codesign --force --deep --sign - "dist/dreamSort.app"
+
+      - name: Smoke test (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $exe = "dist\dreamSort.exe"
+          if (-not (Test-Path -LiteralPath $exe)) { throw "no executable in dist\" }
+          $proc = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 12
+          if ($proc.HasExited) { throw "dreamSort exited immediately (code $($proc.ExitCode))" }
+          Stop-Process -Id $proc.Id -Force
+          "stayed alive after launch"
+
+      - name: Smoke test (Linux)
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: |
+          xvfb-run -a ./dist/dreamSort > /tmp/dreamsort.log 2>&1 &
+          pid=$!
+          sleep 12
+          if kill -0 $pid 2>/dev/null; then
+            echo "stayed alive after launch"
+          else
+            cat /tmp/dreamsort.log
+            exit 1
+          fi
+          pkill -f dist/dreamSort || true
+
+      - name: Smoke test (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        run: |
+          test -x "dist/dreamSort.app/Contents/MacOS/dreamSort"
+          "dist/dreamSort.app/Contents/MacOS/dreamSort" > /tmp/dreamsort.log 2>&1 &
+          pid=$!
+          sleep 12
+          if kill -0 $pid 2>/dev/null; then
+            echo "stayed alive after launch"
+          else
+            cat /tmp/dreamsort.log
+            exit 1
+          fi
+          kill $pid || true
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $v = "${{ steps.version.outputs.value }}"
+          Move-Item -LiteralPath "dist\dreamSort.exe" -Destination "dist\dreamSort-$v-windows-x64.exe"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          v="${{ steps.version.outputs.value }}"
+          mv dist/dreamSort "dist/dreamSort-$v-linux-x64"
+          chmod +x "dist/dreamSort-$v-linux-x64"
+          tar -C dist -czf "dist/dreamSort-$v-linux-x64.tar.gz" "dreamSort-$v-linux-x64"
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          v="${{ steps.version.outputs.value }}"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/dreamSort.app" "dist/dreamSort-$v-${{ matrix.name }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            dist/dreamSort-*-windows-x64.exe
+            dist/dreamSort-*-linux-x64.tar.gz
+            dist/dreamSort-*-macos-*.zip
+
+  release:
+    name: Attach builds to the release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true
