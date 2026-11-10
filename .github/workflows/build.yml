@@ -18,8 +18,8 @@ on:
 
 concurrency:
   group: build-${{ github.ref }}-${{ github.event_name }}
-  # never cancel a tag build: a cancelled run leaves the release with no files
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  # never cancel a tag build or a manual tag-attach run: a cancelled run leaves the release with no files
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.tag != '') }}
 
 env:
   PYTHON_VERSION: "3.12"
@@ -34,12 +34,17 @@ jobs:
       matrix:
         include:
           - name: dreamsort-windows-x64
+            suffix: windows-x64
             os: windows-latest
           - name: dreamsort-linux-x64
-            os: ubuntu-latest
+            suffix: linux-x64
+            # ubuntu-22.04 (older glibc) so the binary runs on more distros
+            os: ubuntu-22.04
           - name: dreamsort-macos-arm64
+            suffix: macos-arm64
             os: macos-15
           - name: dreamsort-macos-x64
+            suffix: macos-x64
             os: macos-15-intel
     steps:
       - name: Checkout
@@ -151,10 +156,10 @@ jobs:
             --add-data "icon.ico:." --add-data "icon.png:." \
             dreamSort.py
 
-      - name: Sign (macOS, ad‑hoc)
+      - name: Sign (macOS, ad-hoc)
         if: runner.os == 'macOS'
         continue-on-error: true
-        # removed --deep: --deep breaks PySide bundled frameworks on ad‑hoc‑sign
+        # removed --deep: --deep breaks PySide bundled frameworks on ad-hoc-sign
         run: codesign --force --sign - "dist/dreamSort.app"
 
       - name: Smoke test (Windows)
@@ -184,6 +189,8 @@ jobs:
 
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: |
           test -x "dist/dreamSort.app/Contents/MacOS/dreamSort"
           "dist/dreamSort.app/Contents/MacOS/dreamSort" > /tmp/dreamsort.log 2>&1 &
@@ -202,16 +209,16 @@ jobs:
         id: pkg_win
         run: |
           $v = "${{ steps.version.outputs.value }}"
-          $outName = "dreamSort-$v-windows-x64.exe"
+          $outName = "dreamSort-$v-${{ matrix.suffix }}.exe"
           Move-Item -LiteralPath "dist\dreamSort.exe" -Destination "dist\$outName"
-          echo "out_file=dist/$outName" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "out_file=dist/$outName" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
         id: pkg_linux
         run: |
           v="${{ steps.version.outputs.value }}"
-          base="dreamSort-$v-linux-x64"
+          base="dreamSort-$v-${{ matrix.suffix }}"
           mv dist/dreamSort "dist/$base"
           chmod +x "dist/$base"
           tar -C dist -czf "dist/$base.tar.gz" "$base"
@@ -222,7 +229,7 @@ jobs:
         id: pkg_mac
         run: |
           v="${{ steps.version.outputs.value }}"
-          outZip="dreamSort-$v-${{ matrix.name }}.zip"
+          outZip="dreamSort-$v-${{ matrix.suffix }}.zip"
           ditto -c -k --sequesterRsrc --keepParent \
             "dist/dreamSort.app" "dist/$outZip"
           echo "out_file=dist/$outZip" >> "$GITHUB_ENV"
@@ -248,7 +255,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout (to read version for tag‑validation)
+      - name: Checkout (to read version for tag-validation)
         uses: actions/checkout@v4
 
       - name: Set Python for version check
@@ -266,7 +273,7 @@ jobs:
           if [ -z "$tag" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then tag="$GITHUB_REF_NAME"; fi
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
 
-      - name: Validate tag matches source version (release‑job side check)
+      - name: Validate tag matches source version (release-job side check)
         shell: bash
         run: |
           python - <<'PY'
@@ -275,7 +282,7 @@ jobs:
           from dreamsort.constants import VERSION
           tag = os.environ["RELEASE_TAG"]
           if tag.lstrip("vV") != VERSION.lstrip("vV"):
-              sys.exit(f"Release‑job check failed: tag {tag} does not match VERSION {VERSION}")
+              sys.exit(f"Release-job check failed: tag {tag} does not match VERSION {VERSION}")
           PY
 
       - name: Download artifacts
