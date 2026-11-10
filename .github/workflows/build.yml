@@ -1,9 +1,7 @@
 # Builds the PySide6 release of dreamSort on Windows, Linux and macOS (arm64 + Intel).
 # Push / pull request: build, smoke-test and upload artifacts.
-# Tag v*: the same builds are attached to a GitHub Release.
-
+# Tag v*: builds are attached to a GitHub Release.
 name: Build
-
 on:
   push:
     branches: [main]
@@ -18,11 +16,8 @@ on:
         description: "Attach these builds to an existing tag/release (blank = build only)"
         required: false
 
-permissions:
-  contents: write
-
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.ref }}-${{ github.event_name }}
   # never cancel a tag build: a cancelled run leaves the release with no files
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
@@ -46,7 +41,6 @@ jobs:
             os: macos-15
           - name: dreamsort-macos-x64
             os: macos-15-intel
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,7 +50,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          # include both requirements.txt and this workflow file so cache invalidates on pyinstaller version change
+          cache-dependency-path: |
+            requirements.txt
+            .github/workflows/build.yml
 
       - name: Install Qt libraries (Linux)
         if: runner.os == 'Linux'
@@ -82,7 +79,6 @@ jobs:
           esac
           if [ -z "$tag" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then tag="$GITHUB_REF_NAME"; fi
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
-          echo "event=$GITHUB_EVENT_NAME ref=$GITHUB_REF type=$GITHUB_REF_TYPE tag=${tag:-<none>}"
 
       - name: Read version
         id: version
@@ -96,9 +92,7 @@ jobs:
           python - <<'PY'
           import os
           import sys
-
           from dreamsort.constants import VERSION
-
           tag = os.environ["RELEASE_TAG"]
           if tag.lstrip("vV") != VERSION.lstrip("vV"):
               sys.exit("tag %s does not match VERSION %s in dreamsort/constants.py"
@@ -157,10 +151,11 @@ jobs:
             --add-data "icon.ico:." --add-data "icon.png:." \
             dreamSort.py
 
-      - name: Sign (macOS, ad-hoc)
+      - name: Sign (macOS, ad‑hoc)
         if: runner.os == 'macOS'
         continue-on-error: true
-        run: codesign --force --deep --sign - "dist/dreamSort.app"
+        # removed --deep: --deep breaks PySide bundled frameworks on ad‑hoc‑sign
+        run: codesign --force --sign - "dist/dreamSort.app"
 
       - name: Smoke test (Windows)
         if: runner.os == 'Windows'
@@ -175,7 +170,6 @@ jobs:
 
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
-        continue-on-error: true
         run: |
           xvfb-run -a ./dist/dreamSort > /tmp/dreamsort.log 2>&1 &
           pid=$!
@@ -190,7 +184,6 @@ jobs:
 
       - name: Smoke test (macOS)
         if: runner.os == 'macOS'
-        continue-on-error: true
         run: |
           test -x "dist/dreamSort.app/Contents/MacOS/dreamSort"
           "dist/dreamSort.app/Contents/MacOS/dreamSort" > /tmp/dreamsort.log 2>&1 &
@@ -206,24 +199,33 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
+        id: pkg_win
         run: |
           $v = "${{ steps.version.outputs.value }}"
-          Move-Item -LiteralPath "dist\dreamSort.exe" -Destination "dist\dreamSort-$v-windows-x64.exe"
+          $outName = "dreamSort-$v-windows-x64.exe"
+          Move-Item -LiteralPath "dist\dreamSort.exe" -Destination "dist\$outName"
+          echo "out_file=dist/$outName" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
+        id: pkg_linux
         run: |
           v="${{ steps.version.outputs.value }}"
-          mv dist/dreamSort "dist/dreamSort-$v-linux-x64"
-          chmod +x "dist/dreamSort-$v-linux-x64"
-          tar -C dist -czf "dist/dreamSort-$v-linux-x64.tar.gz" "dreamSort-$v-linux-x64"
+          base="dreamSort-$v-linux-x64"
+          mv dist/dreamSort "dist/$base"
+          chmod +x "dist/$base"
+          tar -C dist -czf "dist/$base.tar.gz" "$base"
+          echo "out_file=dist/$base.tar.gz" >> "$GITHUB_ENV"
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
+        id: pkg_mac
         run: |
           v="${{ steps.version.outputs.value }}"
+          outZip="dreamSort-$v-${{ matrix.name }}.zip"
           ditto -c -k --sequesterRsrc --keepParent \
-            "dist/dreamSort.app" "dist/dreamSort-$v-${{ matrix.name }}.zip"
+            "dist/dreamSort.app" "dist/$outZip"
+          echo "out_file=dist/$outZip" >> "$GITHUB_ENV"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -231,32 +233,50 @@ jobs:
           name: ${{ matrix.name }}
           if-no-files-found: error
           retention-days: 14
-          path: |
-            dist/dreamSort-*-windows-x64.exe
-            dist/dreamSort-*-linux-x64.tar.gz
-            dist/dreamSort-*-macos-*.zip
+          # exact file instead of glob
+          path: ${{ env.out_file }}
 
   release:
     name: Attach builds to the release
     needs: build
     if: |
       success() && (
-        github.event_name == 'release' ||
         startsWith(github.ref, 'refs/tags/') ||
         (github.event_name == 'workflow_dispatch' && inputs.tag != '')
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
+      - name: Checkout (to read version for tag‑validation)
+        uses: actions/checkout@v4
+
+      - name: Set Python for version check
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Resolve release tag
         shell: bash
         run: |
           tag=""
           case "$GITHUB_EVENT_NAME" in
-            release) tag="${{ github.event.release.tag_name }}" ;;
             workflow_dispatch) tag="${{ inputs.tag }}" ;;
           esac
           if [ -z "$tag" ] && [ "${GITHUB_REF_TYPE}" = "tag" ]; then tag="$GITHUB_REF_NAME"; fi
           echo "RELEASE_TAG=$tag" >> "$GITHUB_ENV"
+
+      - name: Validate tag matches source version (release‑job side check)
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from dreamsort.constants import VERSION
+          tag = os.environ["RELEASE_TAG"]
+          if tag.lstrip("vV") != VERSION.lstrip("vV"):
+              sys.exit(f"Release‑job check failed: tag {tag} does not match VERSION {VERSION}")
+          PY
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
