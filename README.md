@@ -2,7 +2,7 @@
 
 <img src="./icon.png" alt="Definitely-not-Yoohyeon from Dreamcatcher" width="40%"/>
 
-## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx, Eden (portable & installed), and morerokk's MHGU Recompilation.
+## A mod manager designed to simplify the modding experience for Monster Hunter Generations Ultimate (MHGU) on Ryujinx, Eden (portable & installed), and morerokk's Recompilation.
 
 > Developed by [Handburger](https://github.com/RTHKKona)
 > 
