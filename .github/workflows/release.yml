@@ -1,0 +1,81 @@
+# Bumps VERSION in dreamsort/constants.py, commits and tags the release.
+# The tag push triggers Build, which builds every platform and publishes
+# the GitHub Release with the matching artifacts.
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version increment"
+        type: choice
+        default: patch
+        options:
+          - patch   # 0.0.1
+          - minor   # 0.1.0
+          - major   # 1.0.0
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  release:
+    name: Bump and tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Bump version
+        id: bump
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("dreamsort/constants.py")
+          text = path.read_text(encoding="utf-8")
+          match = re.search(r'^VERSION = "v?(\d+)\.(\d+)\.(\d+)"', text, re.M)
+          if not match:
+              raise SystemExit("VERSION not found in dreamsort/constants.py")
+          major, minor, patch = (int(part) for part in match.groups())
+          kind = "${{ inputs.bump }}"
+          if kind == "major":
+              major += 1
+              minor = 0
+              patch = 0
+          elif kind == "minor":
+              minor += 1
+              patch = 0
+          else:
+              patch += 1
+          new_version = "v%d.%d.%d" % (major, minor, patch)
+          path.write_text(
+              text[:match.start()] + 'VERSION = "%s"' % new_version
+              + text[match.end():], encoding="utf-8")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write("version=%s\n" % new_version)
+          print("bumped to", new_version)
+          PY
+
+      - name: Commit and tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dreamsort/constants.py
+          git commit -m "Release ${{ steps.bump.outputs.version }}"
+          git tag "${{ steps.bump.outputs.version }}"
+          git push origin HEAD
+          git push origin "${{ steps.bump.outputs.version }}"

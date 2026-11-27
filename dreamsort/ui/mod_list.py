@@ -31,6 +31,9 @@ class ModListWidget(QWidget):
         self.setAcceptDrops(accept_drops)
 
     # contents
+    def items(self):
+        return list(self._items)
+
     def add_item(self, widget):
         self._items.append(widget)
         self._layout.insertWidget(self._layout.count() - 1, widget)
@@ -39,9 +42,10 @@ class ModListWidget(QWidget):
         self.rows[row.mod_id] = row
         self.add_item(row)
 
-    def add_divider(self, text):
+    def add_header(self, text):
+        # group header, drawn as a row
         label = QLabel(text, self)
-        label.setObjectName("cheatsDivider")
+        label.setObjectName("listHeader")
         self.add_item(label)
         return label
 
@@ -176,10 +180,20 @@ class ModListWidget(QWidget):
             self._layout.removeWidget(self._indicator)
             self._indicator.hide()
 
+    def nested_owner(self, mod_id):
+        # a stack inside this one that holds the row
+        for child in self.findChildren(ModListWidget):
+            row = child.rows.get(mod_id)
+            if row is not None and row in child._items:
+                return child
+        return None
+
     def dragEnterEvent(self, event):
         mime = event.mimeData()
         if has_mod_row(mime):
-            if self._can_drop(mod_id_from_mime(mime)):
+            source_id = mod_id_from_mime(mime)
+            if (self._can_drop(source_id)
+                    or self.nested_owner(source_id) is not None):
                 event.acceptProposedAction()
                 return
             event.ignore()
@@ -192,8 +206,19 @@ class ModListWidget(QWidget):
     def dragMoveEvent(self, event):
         mime = event.mimeData()
         if has_mod_row(mime):
-            index = (self._index_at(event.position().y())
-                     if self._can_drop(mod_id_from_mime(mime)) else None)
+            source_id = mod_id_from_mime(mime)
+            if not self._can_drop(source_id):
+                # a row from a nested stack: the drop means its own end
+                if self.nested_owner(source_id) is not None:
+                    self._drop_index = None
+                    self._hide_indicator()
+                    event.acceptProposedAction()
+                    return
+                self._drop_index = None
+                self._hide_indicator()
+                event.ignore()
+                return
+            index = self._index_at(event.position().y())
             if index is None:
                 self._drop_index = None
                 self._hide_indicator()
@@ -218,11 +243,20 @@ class ModListWidget(QWidget):
         self._hide_indicator()
         if has_mod_row(mime):
             source_id = mod_id_from_mime(mime)
+            if not self._can_drop(source_id):
+                # row from a nested stack, dropped beside it: end of its stack
+                self._drop_index = None
+                if self.nested_owner(source_id) is not None:
+                    self.reorderRequested.emit(source_id, -1)
+                    event.acceptProposedAction()
+                    return
+                event.ignore()
+                return
             index = self._drop_index
             if index is None:
                 index = self._index_at(event.position().y())
             self._drop_index = None
-            if index is not None and self._can_drop(source_id):
+            if index is not None:
                 self.reorderRequested.emit(source_id, index)
                 event.acceptProposedAction()
                 return

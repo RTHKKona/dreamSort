@@ -3,6 +3,8 @@
 from .thread_worker import Worker, run_in_thread, run_worker
 from .queue_bridge import QueueBridge
 from .install import InstallWorker, PY7ZR_SUPPORT
+from .download import DownloadWorker
+from .update_check import UpdateCheckWorker
 
 __all__ = [
     "Worker",
@@ -11,4 +13,6 @@ __all__ = [
     "QueueBridge",
     "InstallWorker",
     "PY7ZR_SUPPORT",
+    "DownloadWorker",
+    "UpdateCheckWorker",
 ]

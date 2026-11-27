@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 
+from ..install.commit import is_scratch_name
 from ..storage import atomic_write_text
 from . import eden_config
 from .ryujinx import RyujinxAnalyzer
@@ -131,7 +132,8 @@ class EdenAnalyzer(RyujinxAnalyzer):
         except OSError:
             return []
         return [name for name in names
-                if os.path.isdir(os.path.join(directory, name))]
+                if os.path.isdir(os.path.join(directory, name))
+                and not is_scratch_name(name)]
 
     @staticmethod
     def _sort_key(name):
@@ -212,6 +214,9 @@ class EdenAnalyzer(RyujinxAnalyzer):
                         file_count += 1
                         total_size += entry.stat(follow_symlinks=False).st_size
                     except OSError:
+                        continue
+                    if rel.split("/", 1)[0].lower() not in ("romfs", "exefs"):
+                        # only what the loader reads can clash
                         continue
                     self.mod_files[mod_name].add(rel)
                     file_to_mods.setdefault(rel, []).append(mod_name)

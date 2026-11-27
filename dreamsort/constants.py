@@ -1,6 +1,6 @@
 # colors
 
-VERSION = "v7.1.0"
+VERSION = "v7.3.4"
 
 class Colors:
     # base
@@ -15,6 +15,7 @@ class Colors:
     PRIMARY = "#ffebcd"          # primary
     PRIMARY_HOVER = "#e3cdb0"    # hover
     PRIMARY_TEXT = "#1a1a1a"     # text
+    SHEET_DIVIDER = "#4a4a4a"    # rule inside the details sheet
 
     # old names
     WIDGET_BG = "#3c3c3c"
@@ -41,4 +42,5 @@ class Colors:
     SECTION_HEADER = "#505050"
     RECOMP_ACCENT = "#86aebf"
     RYUJINX_ACCENT = "#c98585"
+    ENGINE_MODULE = "#4fd0c8"    # engine module chip and row accent
 

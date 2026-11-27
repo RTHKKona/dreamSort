@@ -6,6 +6,8 @@ import re
 import shutil
 
 from ..helpers.files import rename_prefixed_file
+from ..install.commit import is_scratch_name
+from ..rules.manifest import read_manifest
 from ..storage.atomic import atomic_write_text
 
 class RecompAnalyzer:
@@ -15,6 +17,10 @@ class RecompAnalyzer:
     CHEATS_FOLDER = "cheats"
     LOAD_ORDER_NAME = "load_order.txt"
     LOAD_ORDER_MARK = "# Written by the Mods tab"  # marker
+    # port-side native code: engine_modules/<name>/<name>.dll (.so)
+    MODULES_FOLDER = "engine_modules"
+    MODULES_LIST_NAME = "enabled.txt"
+    MODULE_EXTS = (".dll", ".so")
 
     EXE_NAMES = ("mhgurecomp.exe", "mhgurecomp", "mhgurecomp.app")
 
@@ -24,11 +30,16 @@ class RecompAnalyzer:
         self.disabled_mods_path = ""
         self.cheats_path = ""
         self.load_order_path = ""
+        self.engine_modules_path = ""
+        self.engine_modules_list_path = ""
 
         # mods
         self.mods = {}
         # cheat files
         self.cheats = {}
+        # engine modules
+        self.modules = {}
+        self.module_order = []
         # patch list
         self.patches = []
         # plugin list
@@ -57,6 +68,10 @@ class RecompAnalyzer:
         self.cheats_path = os.path.join(self.root_path, self.CHEATS_FOLDER)
         self.load_order_path = os.path.join(self.mods_path,
                                             self.LOAD_ORDER_NAME)
+        self.engine_modules_path = os.path.join(self.root_path,
+                                                self.MODULES_FOLDER)
+        self.engine_modules_list_path = os.path.join(
+            self.engine_modules_path, self.MODULES_LIST_NAME)
         return True
 
     def locate_recomp_exe(self):
@@ -118,8 +133,12 @@ class RecompAnalyzer:
         self.disabled_mods_path = ""
         self.cheats_path = ""
         self.load_order_path = ""
+        self.engine_modules_path = ""
+        self.engine_modules_list_path = ""
         self.mods.clear()
         self.cheats.clear()
+        self.modules.clear()
+        self.module_order = []
         self.patches.clear()
         self.plugins.clear()
         self.conflicts.clear()
@@ -150,6 +169,8 @@ class RecompAnalyzer:
     def scan(self):
         self.mods.clear()
         self.cheats.clear()
+        self.modules.clear()
+        self.module_order = []
         self.patches.clear()
         self.plugins.clear()
         self.conflicts.clear()
@@ -167,7 +188,7 @@ class RecompAnalyzer:
                 full = os.path.join(self.mods_path, raw)
                 if not os.path.isdir(full):
                     continue
-                if raw.startswith("__tmp__"):  # old build leftover
+                if raw.startswith("__tmp__") or is_scratch_name(raw):
                     continue
                 raw_entries.append((raw, full, True))
 
@@ -176,7 +197,8 @@ class RecompAnalyzer:
             for raw in sorted(os.listdir(self.disabled_mods_path),
                               key=lambda n: n.lower()):
                 full = os.path.join(self.disabled_mods_path, raw)
-                if os.path.isdir(full) and not raw.startswith("__tmp__"):
+                if (os.path.isdir(full) and not raw.startswith("__tmp__")
+                        and not is_scratch_name(raw)):
                     legacy_entries.append((raw, full, False))
 
         # load order
@@ -218,7 +240,11 @@ class RecompAnalyzer:
                     continue
                 enabled = not fname.startswith("_")
                 clean = fname if enabled else fname[1:]
-                self.cheats[clean] = {
+                # the '_' switches a file off; '.txt' is not part of the name
+                stem = clean[:-4] if clean.lower().endswith(".txt") else clean
+                if stem in self.cheats:
+                    continue
+                self.cheats[stem] = {
                     "enabled": enabled,
                     "path": os.path.join(self.cheats_path, fname),
                     "raw_name": fname,
@@ -227,6 +253,9 @@ class RecompAnalyzer:
         # find patches, plugins and conflicts
         for clean, mod in self.mods.items():
             self._scan_mod_contents(clean, mod)
+
+        # port-side native code, kept out of mods/
+        self._scan_engine_modules()
 
         # real conflicts only
         file_to_mods = {}
@@ -312,6 +341,106 @@ class RecompAnalyzer:
         progress_queue.put({"type": "status",
                             "text": f"load_order.txt: {len(enabled_raw)} on, "
                                     f"{len(disabled_raw)} off."})
+        return True
+
+    # engine modules
+
+    @staticmethod
+    def _module_name_ok(name):
+        # the loader's rule: letters, digits, '-', '_', '.', no leading dot
+        if not name or name.startswith("."):
+            return False
+        return all(c.isascii() and (c.isalnum() or c in "-_.")
+                   for c in name)
+
+    @staticmethod
+    def _module_binary(folder, name):
+        for ext in RecompAnalyzer.MODULE_EXTS:
+            path = os.path.join(folder, name + ext)
+            if os.path.isfile(path):
+                return path
+        return None
+
+    def _read_engine_modules_list(self):
+        # folder names enabled.txt lists, in file order
+        try:
+            with open(self.engine_modules_list_path, "r", encoding="utf-8",
+                      errors="ignore") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            return []
+        names = []
+        seen = set()
+        for line in lines:
+            s = line.strip().lstrip("\ufeff").strip()
+            if not s or s.startswith("#") or s in seen:
+                continue
+            seen.add(s)
+            names.append(s)
+        return names
+
+    def _scan_engine_modules(self):
+        # engine_modules/<name>/<name>.dll, loaded only when listed
+        if not os.path.isdir(self.engine_modules_path):
+            return
+        try:
+            entries = os.listdir(self.engine_modules_path)
+        except OSError:
+            return
+        listed = self._read_engine_modules_list()
+        self.module_order = list(listed)   # enabled.txt order is load order
+        enabled = set(listed)
+        for raw in sorted(entries, key=str.lower):
+            full = os.path.join(self.engine_modules_path, raw)
+            if not os.path.isdir(full) or not self._module_name_ok(raw):
+                continue
+            self.modules[raw] = {
+                "enabled": raw in enabled,
+                "path": full,
+                "binary": self._module_binary(full, raw),
+            }
+
+    def _write_engine_modules_list(self, enabled):
+        # write engine_modules/enabled.txt
+        off = [name for name in sorted(self.modules, key=str.lower)
+               if name not in enabled]
+        lines = [
+            self.LOAD_ORDER_MARK + " of dreamSort (also fine to edit by hand).",
+            "# One engine module folder per line, first to last: the recomp "
+            "loads the listed ones only.",
+            "# Order is load order, so earlier modules load first.",
+            "# An 'off:' line is installed but not loaded.",
+        ]
+        lines += list(enabled)
+        lines += [f"# off: {name}" for name in off]
+        atomic_write_text(self.engine_modules_list_path,
+                          "\n".join(lines) + "\n", newline=None)
+
+    def _apply_engine_modules(self, module_states, progress_queue):
+        if not self.modules and not os.path.isfile(
+                self.engine_modules_list_path):
+            return True  # none installed and nothing listed: leave it alone
+        progress_queue.put({"type": "status",
+                            "text": "Phase 5: Writing engine_modules/enabled.txt..."})
+        wanted = {name for name, on in module_states.items()
+                  if on and name in self.modules}
+        # keep the order that is already in the file, append new ones at the end
+        enabled = [name for name in self.module_order if name in wanted]
+        enabled += sorted((name for name in wanted
+                           if name not in self.module_order), key=str.lower)
+        try:
+            os.makedirs(self.engine_modules_path, exist_ok=True)
+            self._write_engine_modules_list(enabled)
+        except Exception as e:
+            progress_queue.put({
+                "type": "error",
+                "message": "Could not write "
+                           f"engine_modules/enabled.txt.\n\n{e}"})
+            return False
+        progress_queue.put({"type": "status",
+                            "text": f"engine_modules/enabled.txt: "
+                                    f"{len(enabled)} on, "
+                                    f"{len(self.modules) - len(enabled)} off."})
         return True
 
     # conflicts
@@ -595,6 +724,7 @@ class RecompAnalyzer:
                     patch_entries.append(entry)
                 else:
                     entry["ini_files"] = self._find_nearby_ini(root)
+                    entry["manifest"] = self._nearest_manifest(root, mod_path)
                     plugin_entries.append(entry)
 
         # romfs files
@@ -609,6 +739,8 @@ class RecompAnalyzer:
                               and (root_abs == plugins_abs
                                    or root_abs.startswith(plugins_abs + os.sep)))
                 for filename in files:
+                    if filename.startswith("."):
+                        continue
                     full = os.path.join(root, filename)
                     if filename.lower().endswith(".arc"):
                         has_arc = True
@@ -695,6 +827,33 @@ class RecompAnalyzer:
         return os.path.join(nativenx_path, plugins) if plugins else None
 
     @staticmethod
+    def _nearest_manifest(start, stop):
+        # manifests sit at or above the .nro, never beyond its mod folder;
+        # one beside several plugins speaks for the folder, not for each file
+        base = os.path.normcase(os.path.abspath(stop))
+        node = os.path.abspath(start)
+        first = True
+        while True:
+            shared = first and RecompAnalyzer._nro_count(node) > 1
+            if not shared:
+                data, _notes = read_manifest(node)
+                if data is not None:
+                    return data
+            parent = os.path.dirname(node)
+            if os.path.normcase(node) == base or parent == node:
+                return None
+            node = parent
+            first = False
+
+    @staticmethod
+    def _nro_count(folder):
+        try:
+            return sum(1 for name in os.listdir(folder)
+                       if name.lower().endswith(".nro"))
+        except OSError:
+            return 1
+
+    @staticmethod
     def _find_nearby_ini(directory):
         try:
             return [
@@ -732,7 +891,8 @@ class RecompAnalyzer:
 
     def apply_changes_threaded(self, ordered_mod_names, mod_enabled_map,
                                 cheat_states, patch_states, plugin_states,
-                                progress_queue):
+                                progress_queue, module_states=None):
+        module_states = module_states or {}
         if not self.root_path:
             progress_queue.put({"type": "error",
                                 "message": "Recomp root not set."})
@@ -819,7 +979,12 @@ class RecompAnalyzer:
         # phase 4: patches and plugins
         progress_queue.put({"type": "status",
                             "text": "Phase 4: Applying patch/plugin selections..."})
-        if not self._apply_patches_plugins(patch_states, plugin_states, progress_queue):
+        if not self._apply_patches_plugins(patch_states, plugin_states,
+                                          progress_queue):
+            return
+
+        # phase 5: engine modules
+        if not self._apply_engine_modules(module_states, progress_queue):
             return
 
         progress_queue.put({"type": "progress", "value": 1.0, "text": "Done."})
@@ -834,10 +999,13 @@ class RecompAnalyzer:
             progress_queue.put({"type": "error", "message": f"Cannot read cheats folder: {exc}"})
             return False
 
-        current = {
-            (fname if not fname.startswith("_") else fname[1:]): (not fname.startswith("_"), fname)
-            for fname in entries if fname.lower().endswith(".txt")
-        }
+        current = {}
+        for fname in entries:
+            if not fname.lower().endswith(".txt"):
+                continue
+            clean = fname[1:] if fname.startswith("_") else fname
+            stem = clean[:-4] if clean.lower().endswith(".txt") else clean
+            current[stem] = (not fname.startswith("_"), fname)
         for clean, should_enable in cheat_states.items():
             if clean not in current:
                 continue

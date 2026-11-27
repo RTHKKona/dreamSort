@@ -1,0 +1,12 @@
+{
+  "ryujinx_exe_path": "",
+  "game_file_path": "",
+  "recomp_exe_path": "",
+  "eden_exe_path": "",
+  "mode": "ryujinx",
+  "remember_mode": true,
+  "mods_path": "C:\\Users\\[Username]\\AppData\\Local\\Temp\\ds_nonsense__wjgfgj4\\mods",
+  "profiles": {},
+  "mod_profiles": {},
+  "rules": {}
+}

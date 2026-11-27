@@ -1,0 +1,21 @@
+{
+  "manifest_version": 1,
+  "id": "author/mod-name",
+  "version": "1.0.0",
+
+  "name": "My Mod",
+  "authors": ["Author"],
+  "description": "lorem ipsum",
+  "gamebananalink": "link.com",
+
+  "requires": {
+    "author/library": ">=1.3"
+  },
+  "conflicts": {
+    "author/other-mod": "*"
+  },
+  "load": {
+    "after": [],
+    "before": []
+  }
+}

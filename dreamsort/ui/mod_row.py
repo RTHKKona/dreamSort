@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
 
 from ..constants import Colors
 from .dnd import MOD_ROW_MIME
+from .theme import high_contrast, token
 
 
 class CheckMark(QAbstractButton):
@@ -119,6 +120,7 @@ class ModRow(QFrame):
 
         self.handle = None
         self.chip_labels = []
+        self.badge_chip = None
         for spec in chips:
             self._add_chip(spec)
 
@@ -153,6 +155,35 @@ class ModRow(QFrame):
         self.chip_labels.append(chip)
 
     # setters
+    def set_badge(self, text, kind="update"):
+        # live state chip, kept apart from the fixed chips
+        if getattr(self, "_badge_state", None) == (text, kind):
+            return
+        self._badge_state = (text, kind)
+        if not text:
+            if self.badge_chip is not None:
+                self.badge_chip.hide()
+            return
+        if self.badge_chip is None:
+            self.badge_chip = QLabel("", self)
+            self.badge_chip.setObjectName("chip")
+            self.badge_chip.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            self.badge_chip.setAlignment(Qt.AlignCenter)
+            spot = self._layout.indexOf(self.handle) if self.handle else -1
+            if spot < 0:
+                self._layout.addWidget(self.badge_chip, 0)
+            else:
+                self._layout.insertWidget(spot, self.badge_chip)
+        self.badge_chip.setText(text)
+        self.badge_chip.setProperty("kind", kind)
+        style = self.badge_chip.style()
+        style.unpolish(self.badge_chip)
+        style.polish(self.badge_chip)
+        self.badge_chip.show()
+        # the chip arrives after the row was laid out
+        self._layout.activate()
+        self.updateGeometry()
+
     def _repolish(self):
         style = self.style()
         style.unpolish(self)
@@ -200,6 +231,19 @@ class ModRow(QFrame):
         self.toggled.emit(self.mod_id, checked)
 
     # events
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        # high contrast: an accent bar marks the selected row at a glance
+        if not (high_contrast() and self.property("selected")):
+            return
+        left = 0.0 if self.variant == "child" else 3.5
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor(token("primary")))
+        painter.drawRoundedRect(
+            QRectF(left, 4.0, 4.0, max(0.0, self.height() - 8.0)), 2.0, 2.0)
+
     def _on_handle(self, pos) -> bool:
         if self.handle is None:
             return False
@@ -236,6 +280,14 @@ class ModRow(QFrame):
         drag.setPixmap(pixmap)
         drag.setHotSpot(QPoint(pixmap.width() // 2, pixmap.height() // 2))
         drag.exec(Qt.MoveAction)
+
+
+class ChildRow(ModRow):
+    # plugin-style child row: indented, no tick
+    def __init__(self, mod_id, name, *, glyph="\u2514", parent=None):
+        super().__init__(mod_id, "  %s %s" % (glyph, name), checkbox=False,
+                         variant="child", draggable=False, parent=parent)
+        self._layout.setContentsMargins(8, 2, 8, 2)
 
 
 class FileRow(QFrame):

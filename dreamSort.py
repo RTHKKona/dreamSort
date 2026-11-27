@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # launcher
+# blessed be the bug gods cease to infect my mod manager :Prayge:
 
 import sys
 

@@ -107,6 +107,9 @@ jobs:
       - name: Check the sources compile
         run: python -m compileall -q dreamSort.py dreamsort
 
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
       - name: Check the package imports
         env:
           QT_QPA_PLATFORM: offscreen
@@ -170,8 +173,13 @@ jobs:
           $proc = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 12
           if ($proc.HasExited) { throw "dreamSort exited immediately (code $($proc.ExitCode))" }
+          # frozen exe self-registers the drmsrt protocol on first launch
+          $proto = "HKCU:\Software\Classes\drmsrt\shell\open\command"
+          if (-not (Test-Path $proto)) { throw "drmsrt protocol was not registered" }
+          $command = (Get-ItemProperty -Path $proto).'(default)'
+          if ($command -notlike "*dreamSort*%1*") { throw "protocol command looks wrong: $command" }
           Stop-Process -Id $proc.Id -Force
-          "stayed alive after launch"
+          "stayed alive after launch and protocol handler registered"
 
       - name: Smoke test (Linux)
         if: runner.os == 'Linux'
@@ -185,6 +193,10 @@ jobs:
             cat /tmp/dreamsort.log
             exit 1
           fi
+          # xdg handler for the drmsrt scheme
+          desktop="$HOME/.local/share/applications/dreamsort.desktop"
+          test -f "$desktop"
+          grep -q "x-scheme-handler/drmsrt" "$desktop"
           pkill -f dist/dreamSort || true
 
       - name: Smoke test (macOS)

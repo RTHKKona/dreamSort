@@ -40,7 +40,7 @@ def _sync_directory(directory):
 
 
 def atomic_write_text(path, text, encoding="utf-8", newline=None):
-    """Write text to path."""
+    # Write text to path
     path = os.path.abspath(path)
     directory = os.path.dirname(path)
     fd, tmp_path = tempfile.mkstemp(
@@ -68,7 +68,7 @@ def atomic_write_json(path, data, indent=2):
 
 
 def atomic_copy_file(src, dst):
-    """Copy src over dst."""
+    # Copy src over dst
     dst = os.path.abspath(dst)
     directory = os.path.dirname(dst)
     fd, tmp_path = tempfile.mkstemp(

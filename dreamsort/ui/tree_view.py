@@ -14,6 +14,7 @@ TAG_COLORS = {
     "loaded": Colors.NO_CONFLICT_TEXT,
     "noconflict": Colors.TEXT,
     "cheat": Colors.CHEAT_MOD,
+    "module": Colors.ENGINE_MODULE,
     "disabled": Colors.DISABLED,
 }
 

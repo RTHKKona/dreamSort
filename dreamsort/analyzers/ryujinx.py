@@ -6,6 +6,7 @@ import re
 import shutil
 
 from ..helpers.files import is_process_running
+from ..install.commit import is_scratch_name
 from ..storage.atomic import atomic_write_json, atomic_write_text
 
 class RyujinxAnalyzer:
@@ -17,6 +18,7 @@ class RyujinxAnalyzer:
         self.mods_json_path = None
         self.mod_files = {}
         self.mod_stats = {}
+        self.mod_labels = {}
         self.conflicts = {}
         self.load_order = []
         self.cheat_only_mods = set()
@@ -85,6 +87,7 @@ class RyujinxAnalyzer:
         self.mods_json_path = None
         self.mod_files = {}
         self.mod_stats = {}
+        self.mod_labels = {}
         self.conflicts = {}
         self.load_order = []
         self.cheat_only_mods.clear()
@@ -98,7 +101,8 @@ class RyujinxAnalyzer:
             return []
         try:
             dirs = [d for d in os.listdir(self.mods_path)
-                    if os.path.isdir(os.path.join(self.mods_path, d))]
+                    if os.path.isdir(os.path.join(self.mods_path, d))
+                    and not is_scratch_name(d)]
             dirs.sort(key=lambda x: [
                 int(c) if c.isdigit() else c
                 for c in re.split("([0-9]+)", x)
@@ -141,6 +145,8 @@ class RyujinxAnalyzer:
             # one pass per mod
             file_count = 0
             total_size = 0
+            labels = {"romfs": False, "exefs": False, "forge": False,
+                      "arc": False}
             stack = [(mod_path, "")]
             while stack:
                 directory, prefix = stack.pop()
@@ -153,6 +159,8 @@ class RyujinxAnalyzer:
                     try:
                         if entry.is_dir(follow_symlinks=False):
                             if entry.name.lower() != "cheats":
+                                if "nativenx/plugins" in rel.lower():
+                                    labels["forge"] = True
                                 stack.append((entry.path, rel + "/"))
                             continue
                         if not entry.is_file(follow_symlinks=False):
@@ -161,9 +169,23 @@ class RyujinxAnalyzer:
                         total_size += entry.stat(follow_symlinks=False).st_size
                     except OSError:
                         continue
+                    head = rel.split("/", 1)[0].lower()
+                    if head == "exefs":
+                        labels["exefs"] = True
+                    elif head in ("romfs", "romfslite", "romfs_ext"):
+                        if "nativenx/plugins" in rel.lower():
+                            labels["forge"] = True
+                        else:
+                            if rel.lower().endswith(".arc"):
+                                labels["arc"] = True
+                            labels["romfs"] = True
+                    else:
+                        # only what the loader reads can clash
+                        continue
                     self.mod_files[mod_name].add(rel)
                     file_to_mods_map.setdefault(rel, []).append(mod_name)
             self.mod_stats[mod_name] = (file_count, total_size)
+            self.mod_labels[mod_name] = labels
 
         self.conflicts = {}
         for file_path, mods in file_to_mods_map.items():
