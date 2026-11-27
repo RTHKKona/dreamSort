@@ -1,6 +1,6 @@
 # colors
 
-VERSION = "v7.3.4"
+VERSION = "v7.3.5"
 
 class Colors:
     # base
